@@ -1,16 +1,65 @@
-# React + Vite
+# RideCare 🛵
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+**RideCare** adalah aplikasi manajemen perawatan kendaraan pribadi berbasis web (PWA) yang membantu Anda mencatat riwayat servis, memantau odometer, dan menganalisis pengeluaran biaya perawatan motor Anda.
 
-Currently, two official plugins are available:
+Aplikasi ini dirancang untuk pengguna yang memiliki lebih dari satu kendaraan dan ingin memastikan jadwal servis tidak terlewat.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## 🌟 Fitur Utama
 
-## React Compiler
+-   **Multi-Motor**: Kelola banyak motor dalam satu aplikasi tanpa batas.
+-   **Pencatatan Servis**: Simpan riwayat servis lengkap (Oli, Busi, Ban, dll) beserta biaya dan foto struk/nota.
+-   **Pelacakan Odometer**: Update kilometer kendaraan kapan saja untuk mengetahui jarak tempuh harian.
+-   **Statistik Pengeluaran**:
+    -   Lihat total biaya servis per motor.
+    -   Grafik breakdown kategori pengeluaran (misal: berapa habis untuk Oli vs Ban).
+-   **Sinkronisasi Cloud (Supabase)**: Data tersimpan aman di Cloud, bisa diakses dari perangkat berbeda secara real-time.
+-   **Progressive Web App (PWA)**: Bisa diinstal di HP layaknya aplikasi native.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 🛠️ Teknologi yang Digunakan
 
-## Expanding the ESLint configuration
+-   **Frontend**: React + Vite
+-   **Styling**: Tailwind CSS + Lucide Icons
+-   **Backend & Database**: Supabase (PostgreSQL)
+-   **Routing**: React Router DOM
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## 🚀 Cara Menjalankan Project
+
+Untuk menjalankan aplikasi ini di komputer lokal Anda:
+
+1.  **Clone Repository**
+    ```bash
+    git clone https://github.com/hsnmuha/ridecare.git
+    cd ridecare
+    ```
+
+2.  **Install Dependencies**
+    Pastikan Anda sudah menginstall NodeJS.
+    ```bash
+    npm install
+    ```
+
+3.  **Setup Environment Variables**
+    Buat file `.env` dan isi dengan kredensial Supabase Anda:
+    ```env
+    VITE_SUPABASE_URL=your_supabase_url
+    VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+    ```
+    *(Hubungi pemilik repo untuk akses kredensial jika Anda kolaborator)*
+
+4.  **Jalankan Aplikasi**
+    ```bash
+    npm run dev
+    ```
+    Buka `http://localhost:5173` di browser Anda.
+
+## ☁️ Update ke GitHub (Otomatis)
+
+Project ini dilengkapi script otomatis untuk mempermudah upload kode ke GitHub tanpa mengetik perintah git manual.
+
+1.  Buka file **`push.bat`** (klik 2x).
+2.  Masukkan pesan update (contoh: "tambah fitur baru").
+3.  Tekan Enter. Kode akan otomatis ter-upload.
+
+---
+
+Dibuat dengan ❤️ untuk pecinta otomotif.
