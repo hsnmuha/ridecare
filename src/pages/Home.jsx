@@ -1,69 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import { Flag, Gauge, Calendar, AlertTriangle, CheckCircle, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { fetchMotors, fetchServices } from '../services/api';
+import { fetchMotors, fetchServicesForMotors } from '../services/api';
 import { calculateStatus } from '../utils/logic';
 import clsx from 'clsx';
 
-const MotorCard = ({ motor }) => {
-    const [allServices, setAllServices] = useState([]);
-    const [loading, setLoading] = useState(true);
+const MotorCard = ({ motor, services = [] }) => {
+    // Services are now passed as props, already filtered for this motor
 
-    useEffect(() => {
-        const loadServices = async () => {
-            try {
-                // motor.id is the UUID from Supabase
-                const services = await fetchServices(motor.id);
-                setAllServices(services);
-            } catch (err) {
-                console.error("Failed to load services for motor", motor.id, err);
-            } finally {
-                setLoading(false);
-            }
-        }
-        loadServices();
-    }, [motor.id]);
+    // Calculate Odometer Logic
+    // Use the odometer from the latest service as a proxy for current odometer if separate odometer record isn't fetched.
+    // We prioritize the Max(odometer from services, motor.odometer_awal).
 
-    const lastOdo = 0; // TODO: Fetch from odometers table if needed, or rely on motor.odometer_awal logic?
-    // Actually, logic.js calculateStatus takes currentOdometer. 
-    // The previous code fetched 'lastOdo' from odometers table.
-    // Ideally we should also fetch odometers here or simplify.
-    // For now, let's use motor.odometer_awal as fallback if no odometer/service history.
-    // Wait, the previous code had: const lastOdo = useLiveQuery(() => db.odometers...);
-    // Supposedly I should also fetch the latest odometer reading.
-    // But `api.fetchServices` does not return odometers.
-    // I entered `fetchOdometers` in api.js. I should use it.
-    // BUT to keep it simple and performant, maybe just rely on services for now?
-    // No, `calculateStatus` needs precise odometer.
-    // Let's rely on calculation inside logic.js or fetch it?
-    // Let's modify logic.js to NOT fail if odometer is missing, or fetch it.
-    // Actually, I'll skip fetching odometers separately for this card view for performance unless critical.
-    // Does `calculateStatus` use `currentOdo`? Yes.
-    // `currentOdo` came from `lastOdo.nilai_odometer`.
-    // If I don't fetch it, I can only use `motor.odometer_awal` or the last service's odometer.
-    // Let's assume `motor.odometer_awal` + some delta? No that's impossible.
-    // I should probably fetch the latest odometer.
-    // Or... I can modify `fetchMotors` to JOIN data? Supabase simpler API doesn't do deep joins easily without knowing foreign keys well.
-    // Let's just use `motor.odometer_awal` for now to get it working, or last service odometer.
-    // Re-reading logic.js: `calculateStatus` takes `allServices` and `currentOdometer`.
-
-    // Quick fix: Use the odometer from the latest service as a proxy for current odometer if separate odometer record isn't fetched.
-    // Or better: `allServices` has `odometer_saat_ganti`.
-    // The previous code fetched `odometers` table separately.
-    // I will simplify: Use the Max(odometer from services, motor.odometer_awal). This is decent approximation if user enters service.
-    // But user might add Odometer reading WITHOUT service.
-    // Okay, I won't implement fetching odometers in the card for now to save requests/complexity, 
-    // I will use `motor.odometer_awal` or max of service odometers.
-
-    const maxServiceOdo = allServices.reduce((max, s) => Math.max(max, s.odometer_saat_ganti || 0), 0);
+    const maxServiceOdo = services.reduce((max, s) => Math.max(max, s.odometer_saat_ganti || 0), 0);
     const currentOdo = Math.max(maxServiceOdo, motor.odometer_awal || 0);
 
-    const statusInfo = !loading ? calculateStatus(allServices, currentOdo) : { status: 'safe', message: 'Loading...' };
+    const statusInfo = calculateStatus(services, currentOdo); // Removed internal loading state as parent handles it
 
-    const lastService = allServices.length > 0 ? allServices[0] : null;
+    const lastService = services.length > 0 ? services[0] : null;
 
     return (
-        <Link to={`/motor/${motor.id}`} className="block bg-white rounded-xl shadow-sm border border-slate-100 p-4 mb-4 active:scale-95 transition-transform">
+        <Link
+            to={`/motor/${motor.id}`}
+            state={{ motor }}
+            className="block bg-white rounded-xl shadow-sm border border-slate-100 p-4 mb-4 active:scale-95 transition-transform"
+        >
             <div className="flex justify-between items-start mb-2">
                 <div>
                     <h3 className="text-lg font-bold text-slate-800">{motor.nama_motor}</h3>
@@ -110,20 +71,38 @@ const MotorCard = ({ motor }) => {
 
 export const Home = () => {
     const [motors, setMotors] = useState([]);
+    const [servicesByMotor, setServicesByMotor] = useState({});
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const loadMotors = async () => {
+        const loadData = async () => {
             try {
-                const data = await fetchMotors();
-                setMotors(data);
+                // 1. Fetch Motors
+                const motorsData = await fetchMotors();
+                setMotors(motorsData);
+
+                if (motorsData.length > 0) {
+                    // 2. Extract IDs and Fetch Services
+                    const motorIds = motorsData.map(m => m.id);
+                    const allServices = await fetchServicesForMotors(motorIds);
+
+                    // 3. Group services by motor_id
+                    const groupedServices = {};
+                    allServices.forEach(service => {
+                        if (!groupedServices[service.motor_id]) {
+                            groupedServices[service.motor_id] = [];
+                        }
+                        groupedServices[service.motor_id].push(service);
+                    });
+                    setServicesByMotor(groupedServices);
+                }
             } catch (error) {
-                console.error("Failed to load motors", error);
+                console.error("Failed to load home data", error);
             } finally {
                 setLoading(false);
             }
         };
-        loadMotors();
+        loadData();
     }, []);
 
     if (loading) return <div className="p-4 text-center">Memuat...</div>;
@@ -150,7 +129,13 @@ export const Home = () => {
                     </Link>
                 </div>
             ) : (
-                motors.map(motor => <MotorCard key={motor.id} motor={motor} />)
+                motors.map(motor => (
+                    <MotorCard
+                        key={motor.id}
+                        motor={motor}
+                        services={servicesByMotor[motor.id] || []}
+                    />
+                ))
             )}
         </div>
     );

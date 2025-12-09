@@ -22,33 +22,52 @@ export const getIntervals = () => {
     try {
         const stored = localStorage.getItem('ridecare_intervals');
         if (stored) {
-            return { ...SERVICE_INTERVALS, ...JSON.parse(stored) };
+            const parsed = JSON.parse(stored);
+            // Validation: Must be object and not null
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                return { ...SERVICE_INTERVALS, ...parsed };
+            }
         }
     } catch (e) {
         console.error("Error loading intervals", e);
+        // Safely clear bad data
+        try { localStorage.removeItem('ridecare_intervals'); } catch { }
     }
     return SERVICE_INTERVALS;
 }
 
 export const calculateStatus = (allServices, currentOdometer, currentDate = new Date(), customIntervals = null) => {
-    // Use provided customIntervals or fetch them
+    // 1. Get Active Intervals Safely
     const activeIntervals = customIntervals || getIntervals();
 
-    // 1. Initialize Default Status for all Components
-    const components = Object.keys(activeIntervals).map(type => ({
-        type,
-        status: 'safe', // Changed from danger to safe as per user request
-        percentKm: 0,
-        percentTime: 0,
-        message: 'Belum ada data',
-        kmRemaining: activeIntervals[type].km, // Full interval available
-        daysRemaining: activeIntervals[type].months * 30, // Full time available
-        isOverdue: false,
-        interval: activeIntervals[type] // Include interval info
-    }));
+    // Safety check: Ensure activeIntervals is a valid object
+    if (!activeIntervals || typeof activeIntervals !== 'object') {
+        return { status: 'safe', message: 'Konfigurasi Error', details: [] };
+    }
 
-    // 2. If no services at all, return generic safe implies new motor
-    if (!allServices || allServices.length === 0) {
+    const validTypes = Object.keys(SERVICE_INTERVALS);
+
+    // 2. Initialize Components based on VALID types only
+    // This filters out any garbage keys from customIntervals
+    const components = validTypes.map(type => {
+        const intervalDef = activeIntervals[type] || SERVICE_INTERVALS[type] || { km: 5000, months: 6 };
+        return {
+            type,
+            status: 'safe',
+            percentKm: 0,
+            percentTime: 0,
+            message: 'Belum ada data',
+            kmRemaining: intervalDef.km || 5000,
+            daysRemaining: (intervalDef.months || 6) * 30,
+            isOverdue: false,
+            interval: intervalDef,
+            lastServiceDate: null,
+            lastServiceOdo: null
+        };
+    });
+
+    // 3. If no services, return safe default
+    if (!allServices || !Array.isArray(allServices) || allServices.length === 0) {
         return {
             status: 'safe',
             message: 'Siap digunakan',
@@ -56,29 +75,44 @@ export const calculateStatus = (allServices, currentOdometer, currentDate = new 
         };
     }
 
-    // 3. Evaluate each component type based on its LAST service
-    let worstStatusPriority = 0; // 0: safe, 1: warning, 2: danger
+    // 4. Sort Services safely
+    const sortedServices = [...allServices].sort((a, b) => {
+        const dateA = new Date(a.tanggal_perawatan);
+        const dateB = new Date(b.tanggal_perawatan);
+        return (isNaN(dateB.getTime()) ? 0 : dateB) - (isNaN(dateA.getTime()) ? 0 : dateA);
+    });
 
-    // Create a time-sorted copy of services once to avoid repeated sorting
-    const sortedServices = [...allServices].sort((a, b) => new Date(b.tanggal_perawatan) - new Date(a.tanggal_perawatan));
+    // 5. Analyze each component
+    let worstStatusPriority = 0; // 0: safe, 1: warning, 2: danger
 
     const analyzedComponents = components.map(comp => {
         // Find the LATEST service for this specific type
         const lastService = sortedServices.find(s => s.jenis_perawatan === comp.type);
 
-        if (!lastService) {
-            // Never serviced - treat as SAFE now
-            return comp;
-        }
+        if (!lastService) return comp;
 
         const { odometer_saat_ganti, tanggal_perawatan } = lastService;
-        const interval = activeIntervals[comp.type];
+        const interval = comp.interval;
 
-        const kmDiff = currentOdometer - odometer_saat_ganti;
-        const timeDiff = differenceInDays(currentDate, new Date(tanggal_perawatan));
+        // Safe conversions
+        const safeCurrentOdo = Number(currentOdometer) || 0;
+        const safeServiceOdo = Number(odometer_saat_ganti) || 0;
 
-        const kmLimit = interval.km;
-        const timeLimit = interval.months * 30; // approx
+        let kmDiff = safeCurrentOdo - safeServiceOdo;
+
+        // Handle date safely
+        let timeDiff = 0;
+        try {
+            const serviceDate = new Date(tanggal_perawatan);
+            if (isNaN(serviceDate.getTime())) throw new Error("Invalid Date");
+            timeDiff = differenceInDays(currentDate, serviceDate);
+        } catch (e) {
+            timeDiff = 0; // Fallback
+        }
+
+        // Avoid division by zero
+        const kmLimit = Number(interval.km) || 10000;
+        const timeLimit = (Number(interval.months) || 12) * 30;
 
         const percentKm = Math.min(100, (kmDiff / kmLimit) * 100);
         const percentTime = Math.min(100, (timeDiff / timeLimit) * 100);
@@ -94,7 +128,7 @@ export const calculateStatus = (allServices, currentOdometer, currentDate = new 
             message = 'Ganti Segera!';
             isOverdue = true;
             worstStatusPriority = Math.max(worstStatusPriority, 2);
-        } else if (maxPercent >= 80) { // Changed threshold to 80% for warning
+        } else if (maxPercent >= 80) { // Warning threshold
             status = 'warning';
             message = 'Mendekati Jadwal';
             worstStatusPriority = Math.max(worstStatusPriority, 1);
@@ -103,27 +137,25 @@ export const calculateStatus = (allServices, currentOdometer, currentDate = new 
         return {
             type: comp.type,
             status,
-            percentKm,
-            percentTime,
+            percentKm: isNaN(percentKm) ? 0 : percentKm,
+            percentTime: isNaN(percentTime) ? 0 : percentTime,
             message,
             kmRemaining: kmLimit - kmDiff,
             daysRemaining: timeLimit - timeDiff,
             isOverdue,
-            interval, // Pass back interval data
-            lastServiceDate: tanggal_perawatan, // Helpful for UI
+            interval,
+            lastServiceDate: tanggal_perawatan,
             lastServiceOdo: odometer_saat_ganti
         };
     });
 
-    // 4. Determine Global Status
+    // 6. Determine Global Status
     let globalStatus = 'safe';
     let globalMessage = 'Kondisi Prima';
 
     if (worstStatusPriority === 2) {
         globalStatus = 'danger';
-        // Find what is wrong
         const issues = analyzedComponents.filter(c => c.status === 'danger').map(c => c.type);
-        // Only show top 2 to avoid clutter
         globalMessage = `Periksa: ${issues.slice(0, 2).join(', ')}${issues.length > 2 ? '...' : ''}`;
     } else if (worstStatusPriority === 1) {
         globalStatus = 'warning';
@@ -135,7 +167,6 @@ export const calculateStatus = (allServices, currentOdometer, currentDate = new 
         status: globalStatus,
         message: globalMessage,
         details: analyzedComponents.sort((a, b) => {
-            // Sort by urgency (danger first, then warning, then safe)
             const priority = { danger: 0, warning: 1, safe: 2 };
             return priority[a.status] - priority[b.status];
         })
@@ -146,11 +177,19 @@ export const predictNextService = (lastService) => {
     if (!lastService) return null;
     const { jenis_perawatan, odometer_saat_ganti, tanggal_perawatan } = lastService;
     const intervals = getIntervals();
-    const interval = intervals[jenis_perawatan] || intervals.ServisRutin;
+    const interval = intervals[jenis_perawatan] || intervals.ServisRutin || { km: 5000, months: 6 };
+
+    let nextDate = new Date();
+    try {
+        const date = new Date(tanggal_perawatan);
+        if (!isNaN(date)) {
+            nextDate = addMonths(date, interval.months || 6);
+        }
+    } catch (e) { }
 
     return {
-        nextKm: odometer_saat_ganti + interval.km,
-        nextDate: addMonths(new Date(tanggal_perawatan), interval.months),
+        nextKm: (Number(odometer_saat_ganti) || 0) + (Number(interval.km) || 5000),
+        nextDate: nextDate,
     };
 }
 

@@ -106,6 +106,20 @@ export const fetchServices = async (motorId) => {
     return data;
 };
 
+export const fetchServicesForMotors = async (motorIds) => {
+    if (!motorIds || motorIds.length === 0) return [];
+
+    // Sort by date descending so we can easily pick latest
+    const { data, error } = await supabase
+        .from('services')
+        .select('*')
+        .in('motor_id', motorIds)
+        .order('tanggal_perawatan', { ascending: false });
+
+    if (error) throw error;
+    return data;
+};
+
 export const addService = async (serviceData) => {
     // Expects: motor_id, jenis_perawatan, tanggal_perawatan, odometer_saat_ganti, biaya, nama_bengkel, detail_spesifik, receipt_url, jadwal_berikutnya_km, jadwal_berikutnya_tanggal
 
@@ -132,6 +146,18 @@ export const fetchOdometers = async (motorId) => {
 
     if (error) throw error;
     return data;
+};
+
+export const fetchLatestOdometer = async (motorId) => {
+    const { data, error } = await supabase
+        .from('odometers')
+        .select('*')
+        .eq('motor_id', motorId)
+        .order('tanggal_catat', { ascending: false })
+        .limit(1);
+
+    if (error) throw error;
+    return data.length > 0 ? data[0] : null;
 };
 
 export const addOdometer = async (odoData) => {

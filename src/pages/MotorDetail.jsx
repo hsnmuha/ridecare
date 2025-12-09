@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { fetchMotorById, fetchServices, fetchOdometers } from '../services/api';
+import { useParams, Link, useLocation } from 'react-router-dom';
+import { fetchMotorById, fetchServices, fetchLatestOdometer } from '../services/api';
 import { ArrowLeft, User, Calendar, Gauge, Wrench, Download, Timer, Droplet, Zap, Disc, CircleDot, AlertTriangle, CheckCircle, History, X, ChevronRight, Save } from 'lucide-react';
 import { calculateStatus, getIntervals } from '../utils/logic';
 import { addDays } from 'date-fns';
@@ -8,12 +8,13 @@ import clsx from 'clsx';
 
 export const MotorDetail = () => {
     const { id } = useParams();
+    const location = useLocation();
 
     // Data State
-    const [motor, setMotor] = useState(null);
+    const [motor, setMotor] = useState(location.state?.motor || null);
     const [services, setServices] = useState([]);
-    const [odometers, setOdometers] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const [latestOdometerRecord, setLatestOdometerRecord] = useState(null);
+    const [loadingServices, setLoadingServices] = useState(true);
 
     // UI State
     const [selectedComponent, setSelectedComponent] = useState(null);
@@ -33,28 +34,45 @@ export const MotorDetail = () => {
     useEffect(() => {
         const loadData = async () => {
             try {
-                setLoading(true);
-                const [motorData, servicesData, odometersData] = await Promise.all([
-                    fetchMotorById(id),
+                // If motor not passed via state, fetch it
+                if (!motor) {
+                    const motorData = await fetchMotorById(id);
+                    if (motorData) {
+                        setMotor(motorData);
+                    } else {
+                        // Handle case where motor is not found (deleted?)
+                        console.error("Motor not found");
+                    }
+                }
+
+                // Always fetch fresh services and odometer
+                setLoadingServices(true);
+                const [servicesData, odometerData] = await Promise.all([
                     fetchServices(id),
-                    fetchOdometers(id)
+                    fetchLatestOdometer(id)
                 ]);
-                setMotor(motorData);
                 setServices(servicesData || []);
-                setOdometers(odometersData || []);
+                setLatestOdometerRecord(odometerData);
             } catch (error) {
                 console.error("Failed to load motor data", error);
             } finally {
-                setLoading(false);
+                setLoadingServices(false);
             }
         };
         if (id) loadData();
     }, [id]);
 
-    const latestOdo = odometers && odometers.length > 0 ? odometers[0].nilai_odometer : (motor ? motor.odometer_awal : 0);
+    // Safety fallback
+    if (!motor && !loadingServices) return <div className="p-8 text-center text-slate-500">Motor tidak ditemukan.</div>;
+
+    const latestOdo = latestOdometerRecord?.nilai_odometer
+        || motor?.odometer_awal
+        || 0;
 
     // Re-calculate when services, odo, or intervals change
-    const statusInfo = calculateStatus(services || [], latestOdo, new Date(), customIntervals);
+    const statusInfo = !loadingServices
+        ? calculateStatus(services || [], latestOdo, new Date(), customIntervals)
+        : { status: 'safe', message: 'Memuat status...', details: [] };
 
     const handleCardClick = (detail) => {
         setSelectedComponent(detail);
@@ -91,7 +109,7 @@ export const MotorDetail = () => {
         localStorage.setItem('ridecare_hidden_components', JSON.stringify(newHidden));
     };
 
-    if (loading || !motor) return <div className="p-4">Memuat Data...</div>;
+    if (!motor) return <div className="p-4">Memuat Data Motor...</div>;
 
     // Helper for visual mapping
     const getComponentConfig = (type) => {
@@ -178,59 +196,82 @@ export const MotorDetail = () => {
 
                 {/* GRID LAYOUT */}
                 <div className="grid grid-cols-2 gap-4 mb-8">
-                    {statusInfo.details && statusInfo.details
-                        .filter(detail => {
-                            // SHOW IF: (Not hidden) OR (Status is warning or danger)
-                            return !hiddenComponents.includes(detail.type) || detail.status !== 'safe';
-                        })
-                        .map((detail) => {
-                            const style = getComponentConfig(detail.type);
-                            const estDate = addDays(new Date(), detail.daysRemaining);
-
-                            return (
-                                <div
-                                    key={detail.type}
-                                    onClick={() => handleCardClick(detail)}
-                                    className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex flex-col justify-between relative overflow-hidden group min-h-[160px] cursor-pointer hover:border-blue-200 transition-colors active:scale-95"
-                                >
-                                    <div className="flex justify-between items-start mb-4 relative z-10">
-                                        <div className={clsx("p-2 rounded-full bg-slate-50/50 backdrop-blur-sm", style.color)}>
-                                            {/* Icon bg */}
-                                        </div>
-                                        <div className={clsx("text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 uppercase tracking-wider",
-                                            detail.status === 'safe' && "bg-green-50 text-green-600",
-                                            detail.status === 'warning' && "bg-yellow-50 text-yellow-600",
-                                            detail.status === 'danger' && "bg-red-50 text-red-600",
-                                        )}>
-                                            {detail.status === 'safe' ? 'Aman' : detail.status === 'warning' ? 'Cek' : 'Segera'}
-                                        </div>
-                                    </div>
-
-                                    <div className="flex flex-col items-center text-center my-1 relative z-10">
-                                        <div className={clsx("mb-2 p-3 rounded-full bg-white shadow-sm ring-4 ring-slate-50", style.color)}>
-                                            {style.icon}
-                                        </div>
-                                        <h4 className="font-bold text-slate-700 text-sm mb-1">{style.label}</h4>
-
-                                        <div className="mt-2 text-center relative z-10">
-                                            <p className={clsx("font-bold text-sm",
-                                                detail.kmRemaining < 1000 ? "text-red-500" : "text-slate-800"
-                                            )}>
-                                                {Math.max(0, detail.kmRemaining).toLocaleString()} <span className="text-[10px] font-normal text-slate-400">sisa km</span>
-                                            </p>
-                                            <p className="text-[10px] text-slate-400 mt-1">
-                                                {estDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: '2-digit' })}
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    {/* Background decoration */}
-                                    <div className={clsx("absolute -bottom-6 -right-6 opacity-[0.03] scale-150 rotate-12", style.color)}>
-                                        {React.cloneElement(style.icon, { size: 100 })}
-                                    </div>
+                    {loadingServices ? (
+                        /* Skeleton Loading */
+                        Array(6).fill(0).map((_, i) => (
+                            <div key={i} className="bg-slate-50 p-4 rounded-3xl border border-slate-100 min-h-[160px] animate-pulse relative overflow-hidden">
+                                <div className="absolute top-4 left-4 w-10 h-10 bg-slate-200 rounded-full"></div>
+                                <div className="absolute top-4 right-4 w-12 h-6 bg-slate-200 rounded-full"></div>
+                                <div className="absolute bottom-16 left-0 right-0 flex justify-center">
+                                    <div className="w-1/2 h-4 bg-slate-200 rounded"></div>
                                 </div>
-                            );
-                        })}
+                                <div className="absolute bottom-6 left-0 right-0 flex flex-col items-center gap-2">
+                                    <div className="w-3/4 h-6 bg-slate-200 rounded"></div>
+                                    <div className="w-1/2 h-3 bg-slate-200 rounded"></div>
+                                </div>
+                            </div>
+                        ))
+                    ) : (
+                        Array.isArray(statusInfo.details) && statusInfo.details
+                            .filter(detail => {
+                                // SHOW IF: (Not hidden) OR (Status is warning or danger)
+                                return !hiddenComponents.includes(detail.type) || detail.status !== 'safe';
+                            })
+                            .map((detail) => {
+                                const style = getComponentConfig(detail.type);
+                                let estDate;
+                                try {
+                                    estDate = addDays(new Date(), detail.daysRemaining || 0);
+                                    if (isNaN(estDate.getTime())) throw new Error("Invalid EST Date");
+                                } catch (e) {
+                                    estDate = new Date();
+                                }
+
+                                return (
+                                    <div
+                                        key={detail.type}
+                                        onClick={() => handleCardClick(detail)}
+                                        className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex flex-col justify-between relative overflow-hidden group min-h-[160px] cursor-pointer hover:border-blue-200 transition-colors active:scale-95"
+                                    >
+                                        <div className="flex justify-between items-start mb-4 relative z-10">
+                                            <div className={clsx("p-2 rounded-full bg-slate-50/50 backdrop-blur-sm", style.color)}>
+                                                {/* Icon bg */}
+                                            </div>
+                                            <div className={clsx("text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 uppercase tracking-wider",
+                                                detail.status === 'safe' && "bg-green-50 text-green-600",
+                                                detail.status === 'warning' && "bg-yellow-50 text-yellow-600",
+                                                detail.status === 'danger' && "bg-red-50 text-red-600",
+                                            )}>
+                                                {detail.status === 'safe' ? 'Aman' : detail.status === 'warning' ? 'Cek' : 'Segera'}
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-col items-center text-center my-1 relative z-10">
+                                            <div className={clsx("mb-2 p-3 rounded-full bg-white shadow-sm ring-4 ring-slate-50", style.color)}>
+                                                {style.icon}
+                                            </div>
+                                            <h4 className="font-bold text-slate-700 text-sm mb-1">{style.label}</h4>
+
+                                            <div className="mt-2 text-center relative z-10">
+                                                <p className={clsx("font-bold text-sm",
+                                                    detail.kmRemaining < 1000 ? "text-red-500" : "text-slate-800"
+                                                )}>
+                                                    {Math.max(0, detail.kmRemaining).toLocaleString()} <span className="text-[10px] font-normal text-slate-400">sisa km</span>
+                                                </p>
+                                                <p className="text-[10px] text-slate-400 mt-1">
+                                                    {estDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: '2-digit' })}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {/* Background decoration */}
+                                        <div className={clsx("absolute -bottom-6 -right-6 opacity-[0.03] scale-150 rotate-12", style.color)}>
+                                            {React.cloneElement(style.icon, { size: 100 })}
+                                        </div>
+                                    </div>
+                                );
+                            })
+                    )}
                 </div>
             </div>
 

@@ -19,7 +19,7 @@ export const Layout = () => {
                 <Outlet />
             </main>
 
-            <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] grid grid-cols-4 gap-1 p-2 z-20 pb-safe">
+            <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] grid grid-cols-3 gap-1 p-2 z-20 pb-safe">
                 <NavLink
                     to="/"
                     className={({ isActive }) => clsx("flex flex-col items-center justify-center p-2 rounded-lg transition-colors", isActive ? "text-primary" : "text-slate-400 hover:text-slate-600")}
@@ -42,14 +42,6 @@ export const Layout = () => {
                 >
                     <Gauge size={24} />
                     <span className="text-[10px] font-medium mt-1">Catat KM</span>
-                </NavLink>
-
-                <NavLink
-                    to="/statistics"
-                    className={({ isActive }) => clsx("flex flex-col items-center justify-center p-2 rounded-lg transition-colors", isActive ? "text-primary" : "text-slate-400 hover:text-slate-600")}
-                >
-                    <PieChart size={24} />
-                    <span className="text-[10px] font-medium mt-1">Statistik</span>
                 </NavLink>
             </nav>
         </div >

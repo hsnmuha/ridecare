@@ -7,7 +7,7 @@ import AddService from './pages/AddService';
 import MotorDetail from './pages/MotorDetail';
 import Settings from './pages/Settings';
 import AddOdometer from './pages/AddOdometer';
-import { Statistics } from './pages/Statistics';
+// import { Statistics } from './pages/Statistics';
 
 function App() {
   return (
@@ -20,7 +20,7 @@ function App() {
           <Route path="add-service" element={<AddService />} />
           <Route path="add-odometer" element={<AddOdometer />} />
           <Route path="settings" element={<Settings />} />
-          <Route path="statistics" element={<Statistics />} />
+          {/* <Route path="statistics" element={<Statistics />} /> */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
