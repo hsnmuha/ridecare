@@ -1,0 +1,11 @@
+cara live server
+1. buka command prompt
+2. tulis cd /d D:\Apps\ridecare
+3. tulis npm run dev
+4. kalau mau buka di hp, salin bagian Network
+
+
+email untuk supabase
+user : app.ridecare@gmail.com
+pass : Infinix69
+supa : Infinix69!
